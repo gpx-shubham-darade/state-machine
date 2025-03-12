@@ -12,12 +12,9 @@ public class Application {
 
         Vertx vertx = Vertx.vertx();
 
-        vertx.deployVerticle(new MainVerticle(), result -> {
-            if (result.succeeded()) {
-                LOGGER.info("MainVerticle deployed successfully!");
-            } else {
-                LOGGER.error("Failed to deploy MainVerticle: " + result.cause());
-            }
-        });
+        vertx.deployVerticle(new MainVerticle())
+                .onSuccess(id -> LOGGER.info("MainVerticle deployed successfully!"))
+                .onFailure(err -> LOGGER.error("Failed to deploy MainVerticle", err));
+
     }
 }

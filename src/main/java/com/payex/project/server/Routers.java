@@ -1,7 +1,6 @@
 package com.payex.project.server;
 
 import com.payex.project.constant.AppConstant;
-import io.vertx.core.AbstractVerticle;
 import io.vertx.core.Vertx;
 import io.vertx.core.json.JsonObject;
 import io.vertx.ext.web.Router;
@@ -18,7 +17,7 @@ import io.vertx.json.schema.common.dsl.Schemas;
 import static io.vertx.json.schema.common.dsl.Keywords.minLength;
 
 
-public class Routers extends AbstractVerticle {
+public class Routers  {
     private final RequestHandler requestHandler;
 
 
@@ -32,21 +31,22 @@ public class Routers extends AbstractVerticle {
                 .handler(requestHandler::createStateMachine)
                 .failureHandler(this::commonFailureHandler);
 
-        router.get(AppConstant.END_POINT_STATE_MACHINE + "/:id")
+        router.get(AppConstant.END_POINT_STATE_MACHINE_ID)
                 .handler(requestHandler::getStateMachine)
                 .failureHandler(this::commonFailureHandler);
 
-        router.put(AppConstant.END_POINT_STATE_MACHINE + "/:id")
+        router.put(AppConstant.END_POINT_STATE_MACHINE_ID )
                 .handler(fileBatchingValidation)
                 .handler(requestHandler::updateStateMachine)
                 .failureHandler(this::commonFailureHandler);
 
-        router.delete(AppConstant.END_POINT_STATE_MACHINE + "/:id")
+        router.delete(AppConstant.END_POINT_STATE_MACHINE_ID )
                 .handler(requestHandler::deleteStateMachine)
                 .failureHandler(this::commonFailureHandler);
 
         router.post(AppConstant.END_POINT_KAFKA_MESSAGE)
-                .handler(requestHandler::sendKafkaMessage)
+                .handler(kafkaMessageValidation)
+                .handler(requestHandler::sendEventToKafka)
                 .failureHandler(this::commonFailureHandler);
 
     }
@@ -59,7 +59,7 @@ public class Routers extends AbstractVerticle {
                     .body(
                             Bodies.json(
                                     Schemas.objectSchema()
-                                            .requiredProperty("name", Schemas.stringSchema().with(minLength(2)))
+                                            .requiredProperty("stateMachineName", Schemas.stringSchema().with(minLength(2)))
                                             .requiredProperty("states", Schemas.arraySchema().items(Schemas.stringSchema().with(minLength(2))))
                                             .requiredProperty("events", Schemas.arraySchema().items(Schemas.stringSchema().with(minLength(2))))
                                             .requiredProperty(
@@ -73,6 +73,21 @@ public class Routers extends AbstractVerticle {
                             )
                     )
                     .build();
+
+    ValidationHandler kafkaMessageValidation =
+            ValidationHandlerBuilder.create(
+                            SchemaParser.createDraft201909SchemaParser(
+                                    SchemaRouter.create(Vertx.vertx(), new SchemaRouterOptions())))
+                    .body(
+                            Bodies.json(
+                                    Schemas.objectSchema()
+                                            .requiredProperty("stateMachineId", Schemas.stringSchema().with(minLength(2)))
+                                            .requiredProperty("processId", Schemas.stringSchema().with(minLength(2)))
+                                            .requiredProperty("event", Schemas.stringSchema().with(minLength(2)))
+                            )
+                    )
+                    .build();
+
 
     private void commonFailureHandler(RoutingContext ctx) {
         if (ctx.failure() instanceof BodyProcessorException) {

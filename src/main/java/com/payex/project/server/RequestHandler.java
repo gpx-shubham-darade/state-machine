@@ -1,7 +1,7 @@
 package com.payex.project.server;
 
-import com.payex.project.consumer.KafkaHelper;
-import com.payex.project.controller.StateMachineVerticle;
+import com.payex.project.consumer.KafkaVerticle;
+import com.payex.project.controller.ControllerVerticle;
 import io.vertx.core.json.JsonObject;
 import io.vertx.ext.web.RoutingContext;
 import org.apache.logging.log4j.LogManager;
@@ -9,19 +9,18 @@ import org.apache.logging.log4j.Logger;
 
 public class RequestHandler {
     private static final Logger LOGGER = LogManager.getLogger(RequestHandler.class);
-    private final StateMachineVerticle stateMachineVerticle;
-    private final KafkaHelper kafkaHelper;
+    private final ControllerVerticle controllerVerticle;
+    private final KafkaVerticle kafkaVerticle;
 
-    public RequestHandler(StateMachineVerticle stateMachineVerticle, KafkaHelper kafkaHelper) {
-        this.stateMachineVerticle = stateMachineVerticle;
-        this.kafkaHelper = kafkaHelper;
+    public RequestHandler(KafkaVerticle kafkaVerticle, ControllerVerticle controllerVerticle) {
+        this.kafkaVerticle = kafkaVerticle;
+        this.controllerVerticle = controllerVerticle;
     }
 
     public void createStateMachine(RoutingContext ctx) {
         try {
-//            JsonObject reqJO = new JsonObject(ctx.getBody());
             JsonObject reqJO = ctx.body().asJsonObject();
-            stateMachineVerticle
+            controllerVerticle
                     .createStateMachine(reqJO)
                     .onSuccess(
                             res -> {
@@ -40,7 +39,7 @@ public class RequestHandler {
     public void getStateMachine(RoutingContext ctx) {
         try {
             String id = ctx.pathParam("id");
-            stateMachineVerticle
+            controllerVerticle
                     .getStateMachine(id)
                     .onSuccess(
                             res -> {
@@ -60,7 +59,7 @@ public class RequestHandler {
         try {
             String id = ctx.pathParam("id");
             JsonObject reqJO = ctx.body().asJsonObject();
-            stateMachineVerticle
+            controllerVerticle
                     .updateStateMachine(id, reqJO)
                     .onSuccess(
                             res -> {
@@ -79,7 +78,7 @@ public class RequestHandler {
     public void deleteStateMachine(RoutingContext ctx) {
         try {
             String id = ctx.pathParam("id");
-            stateMachineVerticle
+            controllerVerticle
                     .deleteStateMachine(id)
                     .onSuccess(
                             res -> {
@@ -96,12 +95,11 @@ public class RequestHandler {
     }
 
 
-    public void sendKafkaMessage(RoutingContext ctx) {
+    public void sendEventToKafka(RoutingContext ctx) {
         try {
-//            JsonObject reqJO = new JsonObject(ctx.getBody());
             JsonObject reqJO = ctx.body().asJsonObject();
-            kafkaHelper
-                    .sendStateMachineEvent(reqJO.getString("a"),reqJO.getString("b"),reqJO.getString("c"))
+            kafkaVerticle
+                    .sendEventToKafka(reqJO)
                     .onSuccess(
                             res -> {
                                 ctx.response().setStatusCode(200).end(res.encodePrettily());

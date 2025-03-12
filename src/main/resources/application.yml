@@ -12,5 +12,5 @@ redis:
 kafka:
   bootstrapServers: "localhost:9092"
   groupId: "order-group"
-  topic: "abd"
+  topic: "abc"
 

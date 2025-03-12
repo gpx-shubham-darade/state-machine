@@ -3,6 +3,7 @@ package com.payex.project.constant;
 public class AppConstant {
     // API Endpoints
     public static final String END_POINT_STATE_MACHINE = "/state-machine";
+    public static final String END_POINT_STATE_MACHINE_ID = "/state-machine/:id";
     public static final String END_POINT_KAFKA_MESSAGE = "/kafka-message";
 
     // Collection Names

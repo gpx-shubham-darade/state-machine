@@ -1,10 +1,16 @@
 package com.payex.project.consumer;
 
+import com.payex.project.models.KafkaMessage;
+import com.payex.project.models.StateMachineDB;
 import io.vertx.core.AbstractVerticle;
+import io.vertx.core.Future;
+import io.vertx.core.Promise;
 import io.vertx.core.json.DecodeException;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.kafka.client.consumer.KafkaConsumer;
+import io.vertx.kafka.client.producer.KafkaProducer;
+import io.vertx.kafka.client.producer.KafkaProducerRecord;
 import org.springframework.statemachine.StateMachine;
 import org.springframework.statemachine.config.StateMachineBuilder;
 import org.springframework.statemachine.support.DefaultStateMachineContext;
@@ -26,8 +32,10 @@ public class KafkaVerticle extends AbstractVerticle {
     private static final Logger LOGGER = LogManager.getLogger(KafkaVerticle.class);
 
     private KafkaConsumer<String, String> consumer;
+    private KafkaProducer<String, String> producer;
     private final RedisService redisService;
     private final RepoUtil repoUtil;
+    private String kafkaTopic ;
 
 
     public KafkaVerticle(RedisService redisService, RepoUtil repoUtil) {
@@ -37,16 +45,29 @@ public class KafkaVerticle extends AbstractVerticle {
 
     @Override
     public void start() {
+
         ConfigLoader config = ConfigLoader.loadConfig();
+        kafkaTopic = config.getKafkaTopic();
 
-        // Kafka consumer configuration
-        Map<String, String> configMap = new HashMap<>();
-        configMap.put("bootstrap.servers", config.getKafkaBootstrapServers());
-        configMap.put("key.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
-        configMap.put("value.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
-        configMap.put("group.id", config.getKafkaGroupId());
+        // Producer config
+        Map<String, String> producerConfig = new HashMap<>();
+        producerConfig.put("bootstrap.servers", config.getKafkaBootstrapServers());
+        producerConfig.put("key.serializer", "org.apache.kafka.common.serialization.StringSerializer");
+        producerConfig.put("value.serializer", "org.apache.kafka.common.serialization.StringSerializer");
+        producerConfig.put("acks", "1");
 
-        consumer = KafkaConsumer.create(vertx, configMap);
+        producer = KafkaProducer.create(vertx, producerConfig);
+
+        // Consumer config
+        Map<String, String> consumerConfig = new HashMap<>();
+        consumerConfig.put("bootstrap.servers", config.getKafkaBootstrapServers());
+        consumerConfig.put("key.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
+        consumerConfig.put("value.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
+        consumerConfig.put("group.id", config.getKafkaGroupId());
+//        consumerConfig.put("auto.offset.reset", "earliest");
+//        consumerConfig.put("enable.auto.commit", "false");
+
+        consumer = KafkaConsumer.create(vertx, consumerConfig);
 
         consumer.handler(record -> {
             try {
@@ -58,29 +79,21 @@ public class KafkaVerticle extends AbstractVerticle {
                 LOGGER.error("Invalid JSON message received: " + messageValue);
                 return;
             }
-
                 JsonObject message = new JsonObject(messageValue);
+                KafkaMessage kafkaMessage = message.mapTo(KafkaMessage.class);
+                LOGGER.info(kafkaMessage);
 
-            if (!message.containsKey("stateMachineId") || !message.containsKey("orderId") || !message.containsKey("event")) {
-                LOGGER.error("Invalid message format received: " + record.value());
-                return;
-            }
+            LOGGER.info("Received Kafka message for stateMachine: " + kafkaMessage.getStateMachineId());
 
-            String stateMachineId = message.getString("stateMachineId");
-            String orderId = message.getString("orderId");
-            String eventStr = message.getString("event");
-
-            LOGGER.info("Received Kafka message for stateMachine: " + stateMachineId);
-
-                // Fetch state machine definition from MongoDB
-                fetchStateMachineDefinition(stateMachineId, definition -> {
-                    if (definition != null) {
-                        StateMachine<String, String> stateMachine = buildStateMachine(definition);
+                // Fetch state machine from MongoDB
+                fetchStateMachine(kafkaMessage.getStateMachineId(), res -> {
+                    if (res != null) {
+                        StateMachine<String, String> stateMachine = buildStateMachine(res);
 
                         // Get current state from Redis
-                        String currentState = redisService.getState(orderId);
+                        String currentState = redisService.getState(kafkaMessage.getProcessId());
                         if (currentState == null) {
-                            currentState = definition.getJsonArray("states").getString(0);
+                            currentState = res.getJsonArray("states").getString(0);
                         }
 
                         // Reset state machine
@@ -94,27 +107,87 @@ public class KafkaVerticle extends AbstractVerticle {
 
                         stateMachine.start();
 
-                        boolean accepted = stateMachine.sendEvent(eventStr);
+                        boolean accepted = stateMachine.sendEvent(kafkaMessage.getEvent());
 
                         if (accepted) {
                             // Store new state in Redis
                             String newState = stateMachine.getState().getId();
-                            redisService.saveState(orderId, newState);
-                            LOGGER.info("Order " + orderId + " transitioned to " + newState);
+                            redisService.saveState(kafkaMessage.getProcessId(), newState);
+                            LOGGER.info("Order " + kafkaMessage.getProcessId() + " transitioned to " + newState);
                         } else {
-                            LOGGER.warn("Invalid event " + eventStr + " for order " + orderId);
+                            LOGGER.warn("Invalid event " + kafkaMessage.getEvent() + " for order " + kafkaMessage.getProcessId());
                         }
                     } else {
-                        LOGGER.error("State machine definition not found for ID: " + stateMachineId);
+                        LOGGER.error("State machine not found for ID: " + kafkaMessage.getStateMachineId());
                     }
                 });
             }
-            catch (IllegalArgumentException e) {
-                LOGGER.error("Invalid event received");
+            catch (Exception e) {
+                LOGGER.error("Invalid message received");
             }
         });
 
         consumer.subscribe(config.getKafkaTopic());
+    }
+
+
+    public Future<JsonObject> sendEventToKafka(JsonObject reqJO) {
+        Promise<JsonObject> promise = Promise.promise();
+
+        KafkaMessage kafkaMessage =
+                KafkaMessage.builder()
+                        .stateMachineId(reqJO.getString("stateMachineId"))
+                        .processId(reqJO.getString("processId"))
+                        .event(reqJO.getString("event"))
+                        .build();
+
+        repoUtil.findOne(AppConstant.COLLECTION_STATE_MACHINES, new JsonObject().put("_id", kafkaMessage.getStateMachineId()), new JsonObject())
+                .compose(res -> {
+                    if (res == null) {
+                        JsonObject response = new JsonObject()
+                                .put("success", false)
+                                .put("message", "State machine not found");
+                        promise.complete(response);
+                        return promise.future();
+
+                    }
+
+                    StateMachineDB stateMachineDB = res.mapTo(StateMachineDB.class);
+                    int partition = stateMachineDB.getPartition();
+
+                    JsonObject message = JsonObject.mapFrom(kafkaMessage);
+
+                    LOGGER.info("Sending message to Kafka: {}", message.encodePrettily());
+
+                    String key = String.valueOf(partition);
+
+                    KafkaProducerRecord<String, String> record = KafkaProducerRecord.create(kafkaTopic, key, message.encode(), partition);
+
+                    producer.send(record, ar -> {
+                        if (ar.succeeded()) {
+                            LOGGER.info("Message sent successfully");
+                            promise.complete(new JsonObject()
+                                    .put("success",true)
+                                    .put("message","Message sent successfully"));
+                        } else {
+                            LOGGER.error("Message failed", ar.cause());
+                            promise.fail(new JsonObject()
+                                    .put("success",false)
+                                    .put("message","Message failed").encode());
+                        }
+                    });
+                    return promise.future();
+                })
+                .onFailure(err -> {
+                    LOGGER.error("Failed to send message: " + err.getMessage());
+
+                    JsonObject error = new JsonObject()
+                            .put("success", false)
+                            .put("error", "Failed to send message: " + err.getMessage());
+                    promise.fail(error.encode());
+                });
+
+        return promise.future();
     }
 
     private boolean isValidJson(String input) {
@@ -126,12 +199,12 @@ public class KafkaVerticle extends AbstractVerticle {
         }
     }
 
-    private void fetchStateMachineDefinition(String id, java.util.function.Consumer<JsonObject> callback) {
+    private void fetchStateMachine(String id, java.util.function.Consumer<JsonObject> callback) {
 
         repoUtil.findOne(AppConstant.COLLECTION_STATE_MACHINES, new JsonObject().put("_id", id), new JsonObject())
                 .onSuccess(result -> callback.accept(result))
                 .onFailure(err -> {
-                    LOGGER.error("Failed to fetch state machine definition for ID: " + id + " - " + err.getMessage());
+                    LOGGER.error("Failed to fetch state machine for ID: " + id + " - " + err.getMessage());
                     callback.accept(null);
                 });
     }
