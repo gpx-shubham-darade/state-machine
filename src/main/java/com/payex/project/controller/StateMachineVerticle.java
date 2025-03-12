@@ -1,115 +1,199 @@
 package com.payex.project.controller;
 
 import io.vertx.core.AbstractVerticle;
-import io.vertx.core.Vertx;
+import io.vertx.core.Future;
+import io.vertx.core.Promise;
+import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
-import io.vertx.ext.mongo.MongoClient;
-import io.vertx.ext.web.Router;
-import io.vertx.ext.web.RoutingContext;
-import io.vertx.ext.web.validation.BodyProcessorException;
-import io.vertx.ext.web.validation.ValidationHandler;
-import io.vertx.ext.web.validation.builder.Bodies;
-import io.vertx.ext.web.validation.builder.ValidationHandlerBuilder;
-import io.vertx.json.schema.SchemaParser;
-import io.vertx.json.schema.SchemaRouter;
-import io.vertx.json.schema.SchemaRouterOptions;
-import io.vertx.json.schema.common.dsl.Schemas;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import com.payex.project.constant.AppConstant;
 import com.payex.project.repository.RepoUtil;
 
 import java.util.*;
+import java.util.concurrent.ThreadLocalRandom;
 
-import static io.vertx.json.schema.common.dsl.Keywords.minLength;
 
 public class StateMachineVerticle extends AbstractVerticle {
+
     private static final Logger LOGGER = LogManager.getLogger(StateMachineVerticle.class);
+    private final RepoUtil repoUtil;
 
-    private MongoClient mongoClient;
-    RepoUtil repoUtil;
-
-    public StateMachineVerticle(MongoClient mongoClient) {
-        this.mongoClient = mongoClient;
-        this.repoUtil = new RepoUtil(mongoClient);
+    public StateMachineVerticle(RepoUtil repoUtil) {
+        this.repoUtil = repoUtil;
     }
 
-    public void registerRoutes(Router router) {
+    public Future<JsonObject> createStateMachine(JsonObject reqJO) {
+        Promise<JsonObject> promise = Promise.promise();
 
-        ValidationHandler fileBatchingValidation =
-                ValidationHandlerBuilder.create(
-                                SchemaParser.createDraft201909SchemaParser(
-                                        SchemaRouter.create(Vertx.vertx(), new SchemaRouterOptions())))
-                        .body(
-                                Bodies.json(
-                                        Schemas.objectSchema()
-                                                .requiredProperty("name", Schemas.stringSchema().with(minLength(2)))
-                                                .requiredProperty("states", Schemas.arraySchema().items(Schemas.stringSchema().with(minLength(2))))
-                                                .requiredProperty("events", Schemas.arraySchema().items(Schemas.stringSchema().with(minLength(2))))
-                                                .requiredProperty(
-                                                        "transitions",
-                                                        Schemas.objectSchema()
-                                                                .additionalProperties(
-                                                                        Schemas.objectSchema()
-                                                                                .additionalProperties(Schemas.stringSchema().with(minLength(2)))
-                                                                )
-                                                )
-                                )
-                        )
-                        .build();
+        JsonArray states = reqJO.getJsonArray("states");
+        JsonArray events = reqJO.getJsonArray("events");
+        JsonObject transitions = reqJO.getJsonObject("transitions");
 
-        router.post(AppConstant.END_POINT_STATE_MACHINE)
-                .handler(fileBatchingValidation)
-                .handler(this::createStateMachine)
-                .failureHandler(this::commonFailureHandler);
-
-    }
-
-    private void commonFailureHandler(RoutingContext ctx) {
-        if (ctx.failure() instanceof BodyProcessorException) {
-            BodyProcessorException ex = (BodyProcessorException) ctx.failure();
-            ctx.response()
-                    .setStatusCode(400)
-                    .putHeader("Content-Type", "application/json")
-                    .end(new JsonObject()
-                            .put("error", "Validation error: " + ex.getMessage())
-                            .encode());
-        } else {
-            ctx.response()
-                    .setStatusCode(500)
-                    .putHeader("Content-Type", "application/json")
-                    .end(new JsonObject()
-                            .put("error", "Internal Server Error")
-                            .encode());
-        }
-    }
-
-    private void createStateMachine(RoutingContext context) {
-
-        JsonObject body = new JsonObject(context.getBody());
-
-        if (body == null || !body.containsKey("name") || !body.containsKey("states") || !body.containsKey("events") || !body.containsKey("transitions")) {
-            context.response().setStatusCode(400).end("Invalid request payload");
-            return;
+        // Validate transitions
+        if (!isValidTransitions(states, events, transitions)) {
+            promise.complete(new JsonObject()
+                    .put("success", false)
+                    .put("message", "Invalid transitions: Missing states or events"));
+            return promise.future();
         }
 
         String id = UUID.randomUUID().toString();
-        body.put("_id", id);
+        int partition = ThreadLocalRandom.current()
+                .nextInt(AppConstant.MIN_PARTITION, AppConstant.MAX_PARTITION + 1);
 
-        repoUtil.save(AppConstant.COLLECTION_STATE_MACHINES, body)
+        reqJO.put("_id", id).put("partition",partition);
+
+        repoUtil.save(AppConstant.COLLECTION_STATE_MACHINES, reqJO)
                 .onSuccess(res -> {
-                    context.response()
-                            .setStatusCode(201)
-                            .putHeader("Content-Type", "application/json")
-                            .end(new JsonObject().put("success",true).put("message","state machine created successfully").put("id", id).encode());
-                    LOGGER.info("State machine created {}", id);
+                    JsonObject response = new JsonObject()
+                            .put("success", true)
+                            .put("message", "State machine created successfully")
+                            .put("id", id);
+                    LOGGER.info("State machine created: {}", id);
+                    promise.complete(response);
                 })
                 .onFailure(err -> {
-                    context.response()
-                            .setStatusCode(500)
-                            .end(new JsonObject().put("success",false).put("error", "Failed to store state machine: " + err.getMessage()).encode());
+                    JsonObject errorResponse = new JsonObject()
+                            .put("success", false)
+                            .put("error", "Failed to store state machine: " + err.getMessage());
+                    promise.fail(errorResponse.encode());
                 });
 
+        return promise.future();
+
     }
+
+    public Future<JsonObject>  getStateMachine(String id) {
+        Promise<JsonObject> promise = Promise.promise();
+
+        repoUtil.findOne(AppConstant.COLLECTION_STATE_MACHINES, new JsonObject().put("_id", id), new JsonObject())
+                .onSuccess(stateMachine -> {
+                    if (stateMachine == null) {
+                        JsonObject response = new JsonObject()
+                                        .put("success", false)
+                                        .put("message", "State machine not found");
+                        promise.complete(response);
+                    } else {
+                        JsonObject response = new JsonObject()
+                                .put("success", true)
+                                .put("message", "State machine found")
+                                .put("state-machine", stateMachine);
+                        promise.complete(response);
+                    }
+                })
+                .onFailure(err -> {
+                    LOGGER.error("Failed to fetch state machine definition for ID: " + id + " - " + err.getMessage());
+
+                    JsonObject errorResponse = new JsonObject()
+                            .put("success", false)
+                            .put("error", "Failed to fetch state machine definition for ID: " + id + " - " + err.getMessage());
+                    promise.fail(errorResponse.encode());
+                });
+        return promise.future();
+    }
+
+    public Future<JsonObject>  updateStateMachine(String id, JsonObject reqJO) {
+        Promise<JsonObject> promise = Promise.promise();
+
+        JsonArray states = reqJO.getJsonArray("states");
+        JsonArray events = reqJO.getJsonArray("events");
+        JsonObject transitions = reqJO.getJsonObject("transitions");
+
+        // Validate transitions before updating
+        if (!isValidTransitions(states, events, transitions)) {
+            promise.complete( new JsonObject().put("success", false)
+                    .put("message", "Invalid transitions: Missing states or events"));
+            return promise.future();
+        }
+
+        JsonObject query = new JsonObject().put("_id", id);
+
+        repoUtil.findOneAndUpdate(AppConstant.COLLECTION_STATE_MACHINES, query, reqJO)
+                .onSuccess(result -> {
+                    if (result== null) {
+                        JsonObject response = new JsonObject()
+                                        .put("success", false)
+                                        .put("message", "State machine not found");
+                        promise.complete(response);
+                    } else {
+                        JsonObject response = new JsonObject()
+                                        .put("success", true)
+                                        .put("message", "State machine updated successfully");
+                        LOGGER.info("State machine {} updated successfully", id);
+                        promise.complete(response);
+                    }
+                })
+                .onFailure(err -> {
+                    LOGGER.error("Failed to update state machine {}: {}", id, err.getMessage());
+
+                    JsonObject errorResponse = new JsonObject()
+                            .put("success", false)
+                            .put("error", "Failed to update state machine: " + err.getMessage());
+                    promise.fail(errorResponse.encode());
+                });
+        return promise.future();
+    }
+
+    public Future<JsonObject>  deleteStateMachine(String id) {
+        Promise<JsonObject> promise = Promise.promise();
+
+        repoUtil.findOneAndDelete(AppConstant.COLLECTION_STATE_MACHINES, new JsonObject().put("_id",id))
+                .onSuccess(res -> {
+                    if (res== null) {
+
+                        JsonObject response = new JsonObject()
+                                .put("success", false)
+                                .put("message", "State machine not found");
+                        promise.complete(response);
+                    }
+                    else {
+                        JsonObject response = new JsonObject()
+                                .put("success", false)
+                                .put("message", "State machine deleted successfully");
+                        promise.complete(response);
+                    }
+                })
+                .onFailure(err -> {
+
+                    LOGGER.error("Failed to delete state machine for ID: " + id + " - " + err.getMessage());
+
+                    JsonObject errorResponse = new JsonObject()
+                            .put("success", false)
+                            .put("error", "Failed to delete state machine for ID: " + id + " - " + err.getMessage());
+                    promise.fail(errorResponse.encode());
+                });
+        return promise.future();
+    }
+
+
+
+    private boolean isValidTransitions(JsonArray states, JsonArray events, JsonObject transitions) {
+        Set<String> stateSet = new HashSet<>(states.getList());
+        Set<String> eventSet = new HashSet<>(events.getList());
+
+        for (String fromState : transitions.fieldNames()) {
+            if (!stateSet.contains(fromState)) {
+                LOGGER.error("Invalid transition: '{}' is not a defined state", fromState);
+                return false;
+            }
+
+            JsonObject stateTransitions = transitions.getJsonObject(fromState);
+            for (String event : stateTransitions.fieldNames()) {
+                if (!eventSet.contains(event)) {
+                    LOGGER.error("Invalid transition: Event '{}' is not defined", event);
+                    return false;
+                }
+
+                String nextState = stateTransitions.getString(event);
+                if (!stateSet.contains(nextState)) {
+                    LOGGER.error("Invalid transition: Target state '{}' is not defined", nextState);
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
 
 }

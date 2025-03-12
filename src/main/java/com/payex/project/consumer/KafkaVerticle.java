@@ -1,9 +1,9 @@
 package com.payex.project.consumer;
 
 import io.vertx.core.AbstractVerticle;
+import io.vertx.core.json.DecodeException;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
-import io.vertx.ext.mongo.MongoClient;
 import io.vertx.kafka.client.consumer.KafkaConsumer;
 import org.springframework.statemachine.StateMachine;
 import org.springframework.statemachine.config.StateMachineBuilder;
@@ -22,18 +22,17 @@ import java.util.Set;
 
 
 public class KafkaVerticle extends AbstractVerticle {
+
     private static final Logger LOGGER = LogManager.getLogger(KafkaVerticle.class);
 
     private KafkaConsumer<String, String> consumer;
     private final RedisService redisService;
-    private MongoClient mongoClient;
-    RepoUtil repoUtil;
+    private final RepoUtil repoUtil;
 
 
-    public KafkaVerticle(RedisService redisService, MongoClient mongoClient) {
+    public KafkaVerticle(RedisService redisService, RepoUtil repoUtil) {
         this.redisService = redisService;
-        this.mongoClient = mongoClient;
-        this.repoUtil = new RepoUtil(mongoClient);
+        this.repoUtil = repoUtil;
     }
 
     @Override
@@ -50,14 +49,28 @@ public class KafkaVerticle extends AbstractVerticle {
         consumer = KafkaConsumer.create(vertx, configMap);
 
         consumer.handler(record -> {
-            JsonObject message = new JsonObject(record.value());
+            try {
+            String messageValue = record.value();
+            LOGGER.info("Received Kafka message: " + messageValue);
+
+            // Validate JSON format before parsing
+            if (!isValidJson(messageValue)) {
+                LOGGER.error("Invalid JSON message received: " + messageValue);
+                return;
+            }
+
+                JsonObject message = new JsonObject(messageValue);
+
+            if (!message.containsKey("stateMachineId") || !message.containsKey("orderId") || !message.containsKey("event")) {
+                LOGGER.error("Invalid message format received: " + record.value());
+                return;
+            }
+
             String stateMachineId = message.getString("stateMachineId");
             String orderId = message.getString("orderId");
             String eventStr = message.getString("event");
 
             LOGGER.info("Received Kafka message for stateMachine: " + stateMachineId);
-
-            try {
 
                 // Fetch state machine definition from MongoDB
                 fetchStateMachineDefinition(stateMachineId, definition -> {
@@ -95,12 +108,22 @@ public class KafkaVerticle extends AbstractVerticle {
                         LOGGER.error("State machine definition not found for ID: " + stateMachineId);
                     }
                 });
-            } catch (IllegalArgumentException e) {
-                LOGGER.error("Invalid event received: " + eventStr);
+            }
+            catch (IllegalArgumentException e) {
+                LOGGER.error("Invalid event received");
             }
         });
 
         consumer.subscribe(config.getKafkaTopic());
+    }
+
+    private boolean isValidJson(String input) {
+        try {
+            new JsonObject(input);
+            return true;
+        } catch (DecodeException e) {
+            return false;
+        }
     }
 
     private void fetchStateMachineDefinition(String id, java.util.function.Consumer<JsonObject> callback) {
