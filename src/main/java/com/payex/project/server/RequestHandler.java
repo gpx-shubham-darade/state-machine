@@ -24,11 +24,14 @@ public class RequestHandler {
                     .createStateMachine(reqJO)
                     .onSuccess(
                             res -> {
-                                ctx.response().setStatusCode(200).end(res.encodePrettily());
+                                int statusCode = res.getInteger("statusCode", 200);
+                                ctx.response().setStatusCode(statusCode).end(res.encodePrettily());
                             })
                     .onFailure(
                             failed -> {
-                                ctx.response().setStatusCode(500).end(failed.getMessage());
+                                JsonObject errorResponse = new JsonObject(failed.getMessage());
+                                int statusCode = errorResponse.getInteger("statusCode", 500);
+                                ctx.response().setStatusCode(statusCode).end(failed.getMessage());
                             });
         } catch (Exception e) {
             LOGGER.error(e);
@@ -43,11 +46,14 @@ public class RequestHandler {
                     .getStateMachine(id)
                     .onSuccess(
                             res -> {
-                                ctx.response().setStatusCode(200).end(res.encodePrettily());
+                                int statusCode = res.getInteger("statusCode", 200);
+                                ctx.response().setStatusCode(statusCode).end(res.encodePrettily());
                             })
                     .onFailure(
                             failed -> {
-                                ctx.response().setStatusCode(500).end(failed.getMessage());
+                                JsonObject errorResponse = new JsonObject(failed.getMessage());
+                                int statusCode = errorResponse.getInteger("statusCode", 500);
+                                ctx.response().setStatusCode(statusCode).end(failed.getMessage());
                             });
         } catch (Exception e) {
             LOGGER.error(e);
@@ -63,11 +69,14 @@ public class RequestHandler {
                     .updateStateMachine(id, reqJO)
                     .onSuccess(
                             res -> {
-                                ctx.response().setStatusCode(200).end(res.encodePrettily());
+                                int statusCode = res.getInteger("statusCode", 200);
+                                ctx.response().setStatusCode(statusCode).end(res.encodePrettily());
                             })
                     .onFailure(
                             failed -> {
-                                ctx.response().setStatusCode(500).end(failed.getMessage());
+                                JsonObject errorResponse = new JsonObject(failed.getMessage());
+                                int statusCode = errorResponse.getInteger("statusCode", 500);
+                                ctx.response().setStatusCode(statusCode).end(failed.getMessage());
                             });
         } catch (Exception e) {
             LOGGER.error(e);
@@ -82,11 +91,14 @@ public class RequestHandler {
                     .deleteStateMachine(id)
                     .onSuccess(
                             res -> {
-                                ctx.response().setStatusCode(200).end(res.encodePrettily());
+                                int statusCode = res.getInteger("statusCode", 200);
+                                ctx.response().setStatusCode(statusCode).end(res.encodePrettily());
                             })
                     .onFailure(
                             failed -> {
-                                ctx.response().setStatusCode(500).end(failed.getMessage());
+                                JsonObject errorResponse = new JsonObject(failed.getMessage());
+                                int statusCode = errorResponse.getInteger("statusCode", 500);
+                                ctx.response().setStatusCode(statusCode).end(failed.getMessage());
                             });
         } catch (Exception e) {
             LOGGER.error(e);
@@ -102,11 +114,14 @@ public class RequestHandler {
                     .sendEventToKafka(reqJO)
                     .onSuccess(
                             res -> {
-                                ctx.response().setStatusCode(200).end(res.encodePrettily());
+                                int statusCode = res.getInteger("statusCode", 200);
+                                ctx.response().setStatusCode(statusCode).end(res.encodePrettily());
                             })
                     .onFailure(
                             failed -> {
-                                ctx.response().setStatusCode(500).end(failed.getMessage());
+                                JsonObject errorResponse = new JsonObject(failed.getMessage());
+                                int statusCode = errorResponse.getInteger("statusCode", 500);
+                                ctx.response().setStatusCode(statusCode).end(failed.getMessage());
                             });
         } catch (Exception e) {
             LOGGER.error(e);

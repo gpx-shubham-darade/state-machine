@@ -142,6 +142,7 @@ public class KafkaVerticle extends AbstractVerticle {
                 .compose(res -> {
                     if (res == null) {
                         return Future.succeededFuture(new JsonObject()
+                                .put("statusCode", 404)
                                 .put("success", false)
                                 .put("message", "State machine not found"));
                     }
@@ -160,12 +161,14 @@ public class KafkaVerticle extends AbstractVerticle {
                             .map(meta -> {
                                 LOGGER.info("Message sent successfully");
                                 return new JsonObject()
+                                        .put("statusCode", 200)
                                         .put("success", true)
                                         .put("message", "Message sent successfully");
                             })
                             .recover(err -> {
                                 LOGGER.error("Message failed", err);
                                 return Future.succeededFuture(new JsonObject()
+                                        .put("statusCode", 500)
                                         .put("success", false)
                                         .put("message", "Message failed")
                                         .put("error", err.getMessage()));
@@ -174,6 +177,7 @@ public class KafkaVerticle extends AbstractVerticle {
                 .recover(err -> {
                     LOGGER.error("Unexpected error while sending message", err);
                     return Future.succeededFuture(new JsonObject()
+                            .put("statusCode", 500)
                             .put("success", false)
                             .put("message", "Unexpected error: " + err.getMessage()));
                 });

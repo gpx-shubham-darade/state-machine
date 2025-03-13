@@ -42,17 +42,17 @@ public class ControllerVerticle extends AbstractVerticle {
 
         if (!isValidTransitions(stateMachineDB)) {
             promise.complete(new JsonObject()
+                    .put("statusCode", 400)
                     .put("success", false)
                     .put("message", "Invalid transitions: Missing states or events"));
             return promise.future();
         }
 
-
-
         repoUtil.findOne(AppConstant.COLLECTION_STATE_MACHINES, new JsonObject().put("_id", id), new JsonObject())
                 .onSuccess(res -> {
                     if (res != null) {
                         JsonObject response = new JsonObject()
+                                .put("statusCode", 409)
                                 .put("success", false)
                                 .put("message", "State machine with Name already exists");
                         LOGGER.warn("State machine with ID {} already exists", id);
@@ -63,6 +63,7 @@ public class ControllerVerticle extends AbstractVerticle {
                     repoUtil.save(AppConstant.COLLECTION_STATE_MACHINES, JsonObject.mapFrom(stateMachineDB))
                             .onSuccess(result -> {
                                 JsonObject response = new JsonObject()
+                                        .put("statusCode", 201)
                                         .put("success", true)
                                         .put("message", "State machine created successfully")
                                         .put("id", id);
@@ -71,6 +72,7 @@ public class ControllerVerticle extends AbstractVerticle {
                             })
                             .onFailure(err -> {
                                 JsonObject errorResponse = new JsonObject()
+                                        .put("statusCode", 500)
                                         .put("success", false)
                                         .put("error", "Failed to store state machine: " + err.getMessage());
                                 LOGGER.info("Failed to store state machine: {}" + err.getMessage(), id);
@@ -82,6 +84,7 @@ public class ControllerVerticle extends AbstractVerticle {
                     LOGGER.error("Failed to fetch state machine definition for ID: " + id + " - " + err.getMessage());
 
                     JsonObject errorResponse = new JsonObject()
+                            .put("statusCode", 500)
                             .put("success", false)
                             .put("error", "Failed to fetch state machine definition for ID: " + id + " - " + err.getMessage());
                     promise.fail(errorResponse.encode());
@@ -97,12 +100,14 @@ public class ControllerVerticle extends AbstractVerticle {
                 .onSuccess(res -> {
                     if (res == null) {
                         JsonObject response = new JsonObject()
-                                        .put("success", false)
-                                        .put("message", "State machine not found");
+                                .put("statusCode", 404)
+                                .put("success", false)
+                                .put("message", "State machine not found");
                         promise.complete(response);
                     } else {
                         StateMachineDB stateMachineDB = res.mapTo(StateMachineDB.class);
                         JsonObject response = new JsonObject()
+                                .put("statusCode", 200)
                                 .put("success", true)
                                 .put("message", "State machine found")
                                 .put("stateMachine", stateMachineDB);
@@ -113,6 +118,7 @@ public class ControllerVerticle extends AbstractVerticle {
                     LOGGER.error("Failed to fetch state machine definition for ID: " + id + " - " + err.getMessage());
 
                     JsonObject errorResponse = new JsonObject()
+                            .put("statusCode", 500)
                             .put("success", false)
                             .put("error", "Failed to fetch state machine definition for ID: " + id + " - " + err.getMessage());
                     promise.fail(errorResponse.encode());
@@ -134,6 +140,7 @@ public class ControllerVerticle extends AbstractVerticle {
 
         if (!isValidTransitions(stateMachineDB)) {
             promise.complete(new JsonObject()
+                    .put("statusCode", 400)
                     .put("success", false)
                     .put("message", "Invalid transitions: Missing states or events"));
             return promise.future();
@@ -149,14 +156,15 @@ public class ControllerVerticle extends AbstractVerticle {
                 .onSuccess(result -> {
                     if (result== null) {
                         JsonObject response = new JsonObject()
-                                        .put("success", false)
-                                        .put("message", "State machine not found");
+                                .put("statusCode", 404)
+                                .put("success", false)
+                                .put("message", "State machine not found");
                         promise.complete(response);
                     } else {
-                        StateMachineDB res = result.mapTo(StateMachineDB.class);
                         JsonObject response = new JsonObject()
-                                        .put("success", true)
-                                        .put("message", "State machine updated successfully");
+                                .put("statusCode", 200)
+                                .put("success", true)
+                                .put("message", "State machine updated successfully");
                         LOGGER.info("State machine {} updated successfully", id);
                         promise.complete(response);
                     }
@@ -165,6 +173,7 @@ public class ControllerVerticle extends AbstractVerticle {
                     LOGGER.error("Failed to update state machine {}: {}", id, err.getMessage());
 
                     JsonObject errorResponse = new JsonObject()
+                            .put("statusCode", 500)
                             .put("success", false)
                             .put("error", "Failed to update state machine: " + err.getMessage());
                     promise.fail(errorResponse.encode());
@@ -180,12 +189,14 @@ public class ControllerVerticle extends AbstractVerticle {
                     if (res== null) {
 
                         JsonObject response = new JsonObject()
+                                .put("statusCode", 404)
                                 .put("success", false)
                                 .put("message", "State machine not found");
                         promise.complete(response);
                     }
                     else {
                         JsonObject response = new JsonObject()
+                                .put("statusCode", 200)
                                 .put("success", false)
                                 .put("message", "State machine deleted successfully");
                         promise.complete(response);
@@ -196,6 +207,7 @@ public class ControllerVerticle extends AbstractVerticle {
                     LOGGER.error("Failed to delete state machine for ID: " + id + " - " + err.getMessage());
 
                     JsonObject errorResponse = new JsonObject()
+                            .put("statusCode", 500)
                             .put("success", false)
                             .put("error", "Failed to delete state machine for ID: " + id + " - " + err.getMessage());
                     promise.fail(errorResponse.encode());
