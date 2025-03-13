@@ -130,26 +130,20 @@ public class KafkaVerticle extends AbstractVerticle {
         consumer.subscribe(config.getKafkaTopic());
     }
 
-
     public Future<JsonObject> sendEventToKafka(JsonObject reqJO) {
-        Promise<JsonObject> promise = Promise.promise();
+        KafkaMessage kafkaMessage = KafkaMessage.builder()
+                .stateMachineId(reqJO.getString("stateMachineId"))
+                .processId(reqJO.getString("processId"))
+                .event(reqJO.getString("event"))
+                .build();
 
-        KafkaMessage kafkaMessage =
-                KafkaMessage.builder()
-                        .stateMachineId(reqJO.getString("stateMachineId"))
-                        .processId(reqJO.getString("processId"))
-                        .event(reqJO.getString("event"))
-                        .build();
-
-        repoUtil.findOne(AppConstant.COLLECTION_STATE_MACHINES, new JsonObject().put("_id", kafkaMessage.getStateMachineId()), new JsonObject())
+        return repoUtil.findOne(AppConstant.COLLECTION_STATE_MACHINES,
+                        new JsonObject().put("_id", kafkaMessage.getStateMachineId()), new JsonObject())
                 .compose(res -> {
                     if (res == null) {
-                        JsonObject response = new JsonObject()
+                        return Future.succeededFuture(new JsonObject()
                                 .put("success", false)
-                                .put("message", "State machine not found");
-                        promise.complete(response);
-                        return promise.future();
-
+                                .put("message", "State machine not found"));
                     }
 
                     StateMachineDB stateMachineDB = res.mapTo(StateMachineDB.class);
@@ -160,35 +154,31 @@ public class KafkaVerticle extends AbstractVerticle {
                     LOGGER.info("Sending message to Kafka: {}", message.encodePrettily());
 
                     String key = String.valueOf(partition);
-
                     KafkaProducerRecord<String, String> record = KafkaProducerRecord.create(kafkaTopic, key, message.encode(), partition);
 
-                    producer.send(record, ar -> {
-                        if (ar.succeeded()) {
-                            LOGGER.info("Message sent successfully");
-                            promise.complete(new JsonObject()
-                                    .put("success",true)
-                                    .put("message","Message sent successfully"));
-                        } else {
-                            LOGGER.error("Message failed", ar.cause());
-                            promise.fail(new JsonObject()
-                                    .put("success",false)
-                                    .put("message","Message failed").encode());
-                        }
-                    });
-                    return promise.future();
+                    return producer.send(record)
+                            .map(meta -> {
+                                LOGGER.info("Message sent successfully");
+                                return new JsonObject()
+                                        .put("success", true)
+                                        .put("message", "Message sent successfully");
+                            })
+                            .recover(err -> {
+                                LOGGER.error("Message failed", err);
+                                return Future.succeededFuture(new JsonObject()
+                                        .put("success", false)
+                                        .put("message", "Message failed")
+                                        .put("error", err.getMessage()));
+                            });
                 })
-                .onFailure(err -> {
-                    LOGGER.error("Failed to send message: " + err.getMessage());
-
-                    JsonObject error = new JsonObject()
+                .recover(err -> {
+                    LOGGER.error("Unexpected error while sending message", err);
+                    return Future.succeededFuture(new JsonObject()
                             .put("success", false)
-                            .put("error", "Failed to send message: " + err.getMessage());
-                    promise.fail(error.encode());
+                            .put("message", "Unexpected error: " + err.getMessage()));
                 });
-
-        return promise.future();
     }
+
 
     private boolean isValidJson(String input) {
         try {

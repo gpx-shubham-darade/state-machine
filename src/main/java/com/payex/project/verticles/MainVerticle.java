@@ -1,5 +1,6 @@
 package com.payex.project.verticles;
 
+import com.payex.project.exception.GlobalExceptionHandler;
 import com.payex.project.repository.RepoUtil;
 import com.payex.project.server.RequestHandler;
 import com.payex.project.server.Routers;
@@ -31,6 +32,9 @@ public class MainVerticle extends AbstractVerticle {
 
         Router router = Router.router(vertx);
         router.route().handler(BodyHandler.create());
+
+        GlobalExceptionHandler.register(vertx, "MainVerticle");
+        GlobalExceptionHandler.register(router, "MainRouter");
 
         new Routers(requestHandler).registerRoutes(router);
 
