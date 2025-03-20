@@ -19,6 +19,7 @@
         <maven.compiler.source>17</maven.compiler.source>
         <maven.compiler.target>17</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <surefire.argLine></surefire.argLine>
     </properties>
 
     <dependencies>
@@ -46,23 +47,18 @@
         <dependency>
             <groupId>io.vertx</groupId>
             <artifactId>vertx-web</artifactId>
-            <version>4.3.8</version>
+            <version>4.5.0</version>
         </dependency>
 
         <dependency>
             <groupId>io.vertx</groupId>
-            <artifactId>vertx-web</artifactId>
-            <version>4.3.8</version>
-        </dependency>
-        <dependency>
-            <groupId>io.vertx</groupId>
             <artifactId>vertx-web-validation</artifactId>
-            <version>4.0.2</version>
+            <version>4.5.0</version>
         </dependency>
         <dependency>
             <groupId>io.vertx</groupId>
             <artifactId>vertx-json-schema</artifactId>
-            <version>4.0.2</version>
+            <version>4.5.0</version>
         </dependency>
 
         <!-- Vert.x Kafka Client -->
@@ -83,7 +79,7 @@
         <dependency>
             <groupId>org.apache.kafka</groupId>
             <artifactId>kafka-clients</artifactId>
-            <version>3.6.0</version>
+            <version>3.5.0</version>
         </dependency>
 
         <!-- Spring Boot Starter Test (For Testing) -->
@@ -97,7 +93,7 @@
         <dependency>
             <groupId>io.vertx</groupId>
             <artifactId>vertx-mongo-client</artifactId>
-            <version>4.0.2</version>
+            <version>4.5.0</version>
         </dependency>
 
         <!-- Lombok -->
@@ -132,7 +128,91 @@
             <version>2.21.1</version>
         </dependency>
 
+        <!--         Spock Framework for Groovy tests -->
+        <dependency>
+            <groupId>org.spockframework</groupId>
+            <artifactId>spock-core</artifactId>
+            <version>2.4-M1-groovy-4.0</version>
+            <scope>test</scope>
+        </dependency>
 
+        <!-- Groovy dependency -->
+        <dependency>
+            <groupId>org.codehaus.groovy</groupId>
+            <artifactId>groovy</artifactId>
+            <version>3.0.9</version>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <version>0.8.8</version>
+                <executions>
+                    <execution>
+                        <id>prepare-agent</id>
+                        <goals>
+                            <goal>prepare-agent</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <id>report</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>report</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <plugin>
+                <groupId>org.codehaus.gmavenplus</groupId>
+                <artifactId>gmavenplus-plugin</artifactId>
+                <version>4.1.1</version>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>compile</goal>
+                            <goal>compileTests</goal>
+
+                        </goals>
+                        <configuration>
+                            <testSources>
+                                <fileset>
+                                    <directory>
+                                        ${basedir}/src/test/groovy
+                                    </directory>
+                                    <includes>
+                                        <include>
+                                            **/*.groovy
+                                        </include>
+                                    </includes>
+                                </fileset>
+                            </testSources>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.1.2</version>
+                <configuration>
+                    <includes>
+                        <include>**/*Test.groovy</include>
+                        <include>**/*Spec.groovy</include>
+                    </includes>
+                    <argLine>
+                        @{argLine}
+                    </argLine>
+                </configuration>
+
+            </plugin>
+
+        </plugins>
+    </build>
 </project>

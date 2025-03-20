@@ -45,6 +45,7 @@ public class ControllerVerticle extends AbstractVerticle {
                     .put("statusCode", 400)
                     .put("success", false)
                     .put("message", "Invalid transitions: Missing states or events"));
+            LOGGER.info("Invalid transitions: Missing states or events");
             return promise.future();
         }
 
@@ -82,7 +83,6 @@ public class ControllerVerticle extends AbstractVerticle {
                 })
                 .onFailure(err -> {
                     LOGGER.error("Failed to fetch state machine definition for ID: " + id + " - " + err.getMessage());
-
                     JsonObject errorResponse = new JsonObject()
                             .put("statusCode", 500)
                             .put("success", false)
@@ -103,6 +103,7 @@ public class ControllerVerticle extends AbstractVerticle {
                                 .put("statusCode", 404)
                                 .put("success", false)
                                 .put("message", "State machine not found");
+                        LOGGER.info("State machine not found");
                         promise.complete(response);
                     } else {
                         StateMachineDB stateMachineDB = res.mapTo(StateMachineDB.class);
@@ -111,12 +112,12 @@ public class ControllerVerticle extends AbstractVerticle {
                                 .put("success", true)
                                 .put("message", "State machine found")
                                 .put("stateMachine", stateMachineDB);
+                        LOGGER.info("State machine found");
                         promise.complete(response);
                     }
                 })
                 .onFailure(err -> {
                     LOGGER.error("Failed to fetch state machine definition for ID: " + id + " - " + err.getMessage());
-
                     JsonObject errorResponse = new JsonObject()
                             .put("statusCode", 500)
                             .put("success", false)
@@ -143,6 +144,7 @@ public class ControllerVerticle extends AbstractVerticle {
                     .put("statusCode", 400)
                     .put("success", false)
                     .put("message", "Invalid transitions: Missing states or events"));
+            LOGGER.info("Invalid transitions: Missing states or events");
             return promise.future();
         }
 
@@ -159,6 +161,7 @@ public class ControllerVerticle extends AbstractVerticle {
                                 .put("statusCode", 404)
                                 .put("success", false)
                                 .put("message", "State machine not found");
+                        LOGGER.info("Invalid transitions: Missing states or events");
                         promise.complete(response);
                     } else {
                         JsonObject response = new JsonObject()
@@ -192,13 +195,15 @@ public class ControllerVerticle extends AbstractVerticle {
                                 .put("statusCode", 404)
                                 .put("success", false)
                                 .put("message", "State machine not found");
+                        LOGGER.info("State machine not found");
                         promise.complete(response);
                     }
                     else {
                         JsonObject response = new JsonObject()
                                 .put("statusCode", 200)
-                                .put("success", false)
+                                .put("success", true)
                                 .put("message", "State machine deleted successfully");
+                        LOGGER.info("State machine deleted successfully");
                         promise.complete(response);
                     }
                 })
@@ -219,6 +224,11 @@ public class ControllerVerticle extends AbstractVerticle {
         Set<String> stateSet = new HashSet<>(stateMachineDB.getStates());
         Set<String> eventSet = new HashSet<>(stateMachineDB.getEvents());
         Map<String, Map<String, String>> transitions = stateMachineDB.getTransitions();
+
+        if (stateMachineDB.getStates().size() > stateSet.size() ||  stateMachineDB.getEvents().size() > eventSet.size()) {
+            LOGGER.error("Invalid state machine: Duplicates found");
+            return false;
+        }
 
         for (String fromState : transitions.keySet()) {
             if (!stateSet.contains(fromState)) {
@@ -242,6 +252,4 @@ public class ControllerVerticle extends AbstractVerticle {
         }
         return true;
     }
-
-
 }

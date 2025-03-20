@@ -1,6 +1,6 @@
 mongodb:
-  uri: "mongodb://localhost:27017"
-  database: "statemachines"
+  uri: "mongodb+srv://shubham:aWIxhLUDPc19Reet@staging3.fj9ko.mongodb.net/"
+  database: "payexQA"
 
 server:
   port: 8080
