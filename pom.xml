@@ -177,7 +177,6 @@
                         <goals>
                             <goal>compile</goal>
                             <goal>compileTests</goal>
-
                         </goals>
                         <configuration>
                             <testSources>
@@ -203,8 +202,8 @@
                 <version>3.1.2</version>
                 <configuration>
                     <includes>
-                        <include>**/*Test.groovy</include>
-                        <include>**/*Spec.groovy</include>
+                        <include>**/*Test</include>
+                        <include>**/*Spec</include>
                     </includes>
                     <argLine>
                         @{argLine}
