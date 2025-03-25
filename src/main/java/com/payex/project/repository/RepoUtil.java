@@ -13,6 +13,7 @@ public class RepoUtil {
     private static final Logger LOGGER = LogManager.getLogger(RepoUtil.class);
 
     private final MongoClient mongoClient;
+    Vertx vertx;
 
     public RepoUtil(Vertx vertx) {
         ConfigLoader config = ConfigLoader.loadConfig();
@@ -22,6 +23,11 @@ public class RepoUtil {
                 .put("db_name", config.getMongoDatabase());
 
         this.mongoClient = MongoClient.createShared(vertx, mongoConfig);
+    }
+
+    public RepoUtil(Vertx vertx,MongoClient mongoClient) {
+        this.vertx = vertx;
+        this.mongoClient = mongoClient;
     }
 
     public Future<String> save(String collectionName, JsonObject document) {
@@ -87,7 +93,7 @@ public class RepoUtil {
                 .onFailure(
                         err -> {
                             LOGGER.error("Failed to  update document : " + err);
-                            promise.fail(err.getCause());
+                            promise.fail(err);
                         });
 
         return promise.future();
